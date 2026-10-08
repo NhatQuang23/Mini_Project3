@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:path/path.dart';
 import '../../core/constants/app_constants.dart';
 
@@ -6,6 +8,9 @@ import '../../core/constants/app_constants.dart';
 ///
 /// Uses the singleton pattern internally to ensure a single database
 /// connection is reused throughout the app.
+///
+/// On web, uses [sqflite_common_ffi_web] backed by IndexedDB/WASM.
+/// On mobile/desktop, uses the native [sqflite] package.
 class LocalDatabase {
   Database? _database;
 
@@ -26,15 +31,28 @@ class LocalDatabase {
   Future<void> initialize() async {
     if (_database != null) return; // Already initialized
 
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, AppConstants.dbName);
-
-    _database = await openDatabase(
-      path,
-      version: AppConstants.dbVersion,
-      onCreate: _onCreate,
-      onUpgrade: _onUpgrade,
-    );
+    if (kIsWeb) {
+      // Use the WASM/IndexedDB backed SQLite for web
+      databaseFactory = databaseFactoryFfiWeb;
+      _database = await databaseFactory.openDatabase(
+        AppConstants.dbName,
+        options: OpenDatabaseOptions(
+          version: AppConstants.dbVersion,
+          onCreate: _onCreate,
+          onUpgrade: _onUpgrade,
+        ),
+      );
+    } else {
+      // Use native SQLite on mobile/desktop
+      final dbPath = await getDatabasesPath();
+      final path = join(dbPath, AppConstants.dbName);
+      _database = await openDatabase(
+        path,
+        version: AppConstants.dbVersion,
+        onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
+      );
+    }
   }
 
   /// Creates the expenses table on first run.
